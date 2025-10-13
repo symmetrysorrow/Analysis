@@ -167,7 +167,7 @@ def TempCalib(data):
         return sum
     
     bases=data["Base"]
-    heights_opt=data["Height_opt"]
+    heights_opt=data["PeakOpt"]
 
     p0=[0.01,0.01,0.01,0.01,0.01,0.01]
 
@@ -186,9 +186,9 @@ def TempCalib(data):
     st=np.mean(heights_opt)
 
     for index,row in tqdm.tqdm(data.iterrows()):
-        data.at[index,"Height_opt_temp"] = row['Height_opt']/Calibration(row['base'],popt)*st
+        data.at[index,"PeakOptTemp"] = row['Peak']/Calibration(row['base'],popt)*st
 
-    plt.plot(bases,data["Height_opt_temp"],'o',color='tab:blue',markersize=0.7,label='a')
+    plt.plot(bases,data["PeakOptTemp"],'o',color='tab:blue',markersize=0.7,label='a')
     plt.xlabel('baseline [V]',fontsize = 16)
     plt.ylabel('pulseheight [V]',fontsize = 16)
     plt.grid()
