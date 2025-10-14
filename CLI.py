@@ -39,8 +39,10 @@ def main(path):
             Channel = questionary.select("Select Channel:", choices=chs).ask()
             df = pd.read_csv(f"{path}/CH{Channel}_pulse/output.csv")
             XKey=questionary.select("Select X Key:",choices=["Peak","Base","Rise","Decay"]).ask()
-            YKey=questionary.select("Select X Key:",choices=["Peak","Base","Rise","Decay"]).ask()
+            YKey=questionary.select("Select Y Key:",choices=["Peak","Base","Rise","Decay"]).ask()
             SelectedKeys = general.SelectIDFrom1DF(df, XKey, YKey)
+
+            print(f"selected key:{SelectedKeys}")
 
             noise=general.LoadTxt(f"{path}/CH{Channel}_noise/modelnoise.txt")
 
