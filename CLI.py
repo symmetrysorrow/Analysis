@@ -11,14 +11,14 @@ import re
 import sys
 
 def main(path):
-
-
     if not os.path.exists(f"{path}/PulseConfig.json"):
         shutil.copy("./PulseConfig.json",f"{path}/PulseConfig.json")
+        print("PulseConfig.json is Copied.\nPlease set the config file and run again.")
+        sys.exit(0)
 
     config=general.LoadJson(f"{path}/PulseConfig.json")
 
-    command=["Pulse Analysis","Noise Analysis","Temp and Optimal","Scatter2D", "Exit"]
+    command=["Pulse Analysis","Noise Analysis","Temp and Optimal","Scatter2D","ViewPulse", "Hist","Exit"]
 
     choice=questionary.select("Select analysis type:",choices=command).ask()
     if choice=="Pulse Analysis":
@@ -44,9 +44,9 @@ def main(path):
 
             print(f"selected key:{SelectedKeys}")
 
-            noise=general.LoadTxt(f"{path}/CH{Channel}_noise/modelnoise.txt")
+            NoiseSPE=general.LoadTxt(f"{path}/CH{Channel}_noise/modelnoise.txt")
 
-            exp_process.OptimalFilter(config,path,noise,Channel, SelectedKeys)
+            exp_process.OptimalFilter(config,path,NoiseSPE,Channel, SelectedKeys)
             exp_process.TempCalib(path, SelectedKeys)
 
         elif mode == "Two Channels":
@@ -71,6 +71,46 @@ def main(path):
 
     elif choice=="Scatter2D":
         exp_process.Scatter2D(path)
+
+    elif choice=="ViewPulse":
+        folders = glob.glob(os.path.join(path, "CH*_pulse"))
+        chs = [re.search(r'CH(.*)_pulse', os.path.basename(f)).group(1) for f in folders]
+        # ---- チャンネル選択 ----
+        Channel = questionary.select("Select Channel:", choices=chs).ask()
+        Key = questionary.text("Input Key (integer):").ask()
+        try:
+            Key = int(Key)
+        except ValueError:
+            print("Keyは整数で入力してください。")
+            return
+        exp_process.ViewPulse(path,Channel,Key)
+
+    elif choice=="Hist":
+        folders = glob.glob(os.path.join(path, "CH*_pulse"))
+        chs = [re.search(r'CH(.*)_pulse', os.path.basename(f)).group(1) for f in folders]
+        Channel = questionary.select("Select Channel:", choices=chs).ask()
+
+        csvs=glob.glob(os.path.join(path, f"CH{Channel}_pulse","*.csv"))
+        files=[os.path.basename(f) for f in csvs]
+        file=questionary.select("Select CSV File:", choices=files).ask()
+
+        path=f"{path}/CH{Channel}_pulse/{file}"
+        csv=pd.read_csv(path)
+        Keys=list(csv.columns)
+        Key = questionary.select("Select Key:", choices=Keys).ask()
+
+        binChoose=questionary.select("Choose bin number option:",choices=["Auto","Manual"]).ask()
+        if binChoose=="Manual":
+            binNum=questionary.text("Input bin number (integer):").ask()
+            try:
+                binNum = int(binNum)
+            except ValueError:
+                print("Bin numberは整数で入力してください。")
+                return
+            exp_process.Hist(path,Key,binNum=binNum)
+        else:
+            binNum=None
+            exp_process.Hist(path,Key)
     
     elif choice=="Exit":
         sys.exit(0)

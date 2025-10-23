@@ -25,9 +25,13 @@ def PulseAnalysis(config: dict, path: str):
             key = os.path.splitext(filename)[0].split("_")[-1]
             
             pulse = general.LoadBin(pulse_path)
+            if len(pulse) != config["Readout"]["Sample"]:
+                continue
+
             result = general.AnalyzePulse(pulse, config,key)
             if result is not None:
                 results.append(result)
+            
 
         df = pd.DataFrame(results)
         if "key" in df.columns:
@@ -60,43 +64,62 @@ def NoiseAnalysis(config:dict, path:str):
     sample = config["Readout"]["Sample"] # データ点数 (N)
     rate = config["Readout"]["Rate"]     # サンプリングレート (Fs)
     cutoff = config["Analysis"]["CutoffFrequency"] # ローパスフィルタのカットオフ周波数
+
+    eta=float(input("eta:"))
     
     # フォルダごとの処理
-    for folder in tqdm.tqdm(glob.glob(f"{path}/CH*_noise")):
+    for folder in glob.glob(f"{path}/CH*_noise"):
         noise_pathes = glob.glob(f"{folder}/rawdata/CH*.dat")
         
         amplitude_model = np.zeros(sample)
         count = 0
         original_noise_list = []
         
-        print(f"\nProcessing folder: {folder}")
+        # メディアンフィルタのカーネルサイズ (窓サイズ) を定義
+        # 奇数に設定し、ノイズの幅に応じて調整します。3, 5, 7 などが一般的です。
+        # ここでは例としてカーネルサイズ3を使用します。
+        median_kernel_size = 3
         
-        for noise_path in noise_pathes:
+        for noise_path in tqdm.tqdm(noise_pathes):
             noise = general.LoadBin(noise_path)
             if len(noise) != sample:
                 continue
             
+            # 1. スパイクノイズ除去（メディアンフィルタ）を追加
+            # scipy.signal.medfilt を使用するには、事前に import scipy.signal が必要です。
+            noise = scipy.signal.medfilt(noise, kernel_size=median_kernel_size)
+            
+            # 2. 既存の処理を続行
             noise = general.Bessel(noise, rate, cutoff)
             original_noise_list.append(noise)
 
-            noise_fft=np.fft.fft(noise)
-            noise_amp=np.abs(noise_fft)
-            amplitude_model+=noise_amp
-            count+=1
+            noise_fft = np.fft.fft(noise)
+            noise_amp = np.abs(noise_fft)
+            amplitude_model += noise_amp
+            count += 1
 
         amplitude_model/=count
 
-        np.savetxt(f"{folder}/noise_fft_Voltage.txt",amplitude_model)
+        np.savetxt(f"{folder}/noise_fft_Amplitude.txt",amplitude_model)
+
+        df=rate/sample
+        power=amplitude_model**2 / df
+        amp_dens=np.sqrt(power)
+        amp_dens = amp_dens[: int(sample / 2) + 1] * eta * 1e+6
+
+        np.savetxt(f"{folder}/modelnoise.txt",amp_dens)
 
         fq=general.GetFreq(rate,sample)
 
-        plt.plot(fq,amplitude_model)
+        # スペクトルをグラフ化
+        plt.plot(fq[: int(sample / 2) + 1], amp_dens, linestyle="-", linewidth=0.7)
         plt.loglog()
         plt.xlabel("Frequency[Hz]")
-        plt.ylabel("Amplitude[V]")
+        plt.ylabel("Intensity[pA/Hz$^{1/2}$]")
         plt.grid()
-        plt.savefig(f"{folder}/noise_fft_voltage.png")
-        plt.cla()
+        plt.savefig(f"{folder}/modelnoise.png")
+        plt.show()
+
 
 def TempCalib(path:str,SelectedKeys,SavePath="output_tempcalib.csv",LoadPath="output_optimalfilter.csv"):
     for folder in tqdm.tqdm(glob.glob(f"{path}/CH*_pulse")):
@@ -122,7 +145,7 @@ def OptimalFilter(config: dict, path: str, NoiseSPE, Channel: int, SelectedKeys,
     AveragePulse = np.zeros(config["Readout"]["Sample"], dtype=float)
     count = 0
 
-    for key in SelectedKeys:
+    for key in tqdm.tqdm(SelectedKeys):
         pulse = general.LoadBin(f"{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{key}.dat")
         if len(pulse) != config["Readout"]["Sample"]:
             continue
@@ -135,11 +158,22 @@ def OptimalFilter(config: dict, path: str, NoiseSPE, Channel: int, SelectedKeys,
         print("[警告] 有効なパルスがありません。")
         return
 
-    filt = general.OptimalFilterTemplate(NoiseSPE, AveragePulse, config)
+    filt= general.OptimalFilterTemplate(NoiseSPE, AveragePulse, config)
+
+    pulse_length = len(AveragePulse)
+    # 各配列の「もとのインデックス軸」
+    x_avg = np.linspace(0, 1, pulse_length)
+
+    # filt の補間処理
+    if len(filt) != pulse_length:
+        x_filt = np.linspace(0, 1, len(filt))
+        filt = np.interp(x_avg, x_filt, filt)
 
     # SelectedKeys に対応する行だけ処理
-    for i, key in enumerate(SelectedKeys):
+    for key in tqdm.tqdm(SelectedKeys):
         pulse = general.LoadBin(f"{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{key}.dat").copy()
+        if len(pulse) != config["Readout"]["Sample"]:
+            continue
         base_values = df.loc[df["key"] == key, "Base"].values
 
         if len(base_values) > 0 and not pd.isna(base_values[0]):
@@ -170,4 +204,18 @@ def Scatter2D(path):
 
     dfX,dfY=general.KeyIsin(dfX,dfY)
 
-    general.Scatter2D(dfX[XKey],dfY[YKey])
+    general.Scatter2D(dfX[XKey],dfY[YKey],xlabel=f"CH{XChannel}_{XKey}",ylabel=f"CH{YChannel}_{YKey}")
+
+def ViewPulse(path:str,Channel:int,Key:int):
+    config=general.LoadJson(f"{path}/PulseConfig.json")
+    pulse=general.LoadBin(f"{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{Key}.dat")
+    print(f"path:{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{Key}.dat")
+    result=general.AnalyzePulse(pulse,config,Key,plot=True)
+    print(result)
+    
+def Hist(csvpath:str,Key:str,binNum=None):
+    df=pd.read_csv(csvpath)
+    data=df[Key]
+    fwhm,reso=general.MakeHistgram(data,bin_num=binNum)
+    plt.show()
+    print(f"FWHM:{fwhm}, Reso:{reso}%")
