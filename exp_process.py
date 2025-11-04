@@ -15,6 +15,12 @@ def PulseAnalysis(config: dict, path: str):
     folders=glob.glob(f"{path}/CH*_pulse")
 
     for folder in folders:
+        if os.path.exists(f"{folder}/output.csv"):
+            Skip=questionary.confirm(f"output.csv already exists in {folder}. Do you want to skip Pulse Analysis for this folder?").ask()
+            if Skip:
+                print(f"Skipped Pulse Analysis for {folder}.")
+                continue
+
         pulse_pathes = glob.glob(f"{folder}/rawdata/CH*.dat")
         pulse_pathes = natsort.natsorted(pulse_pathes)
         results = []
@@ -87,7 +93,7 @@ def NoiseAnalysis(config:dict, path:str):
             
             # 1. スパイクノイズ除去（メディアンフィルタ）を追加
             # scipy.signal.medfilt を使用するには、事前に import scipy.signal が必要です。
-            noise = scipy.signal.medfilt(noise, kernel_size=median_kernel_size)
+            #noise = scipy.signal.medfilt(noise, kernel_size=median_kernel_size)
             
             # 2. 既存の処理を続行
             noise = general.Bessel(noise, rate, cutoff)
@@ -210,6 +216,7 @@ def ViewPulse(path:str,Channel:int,Key:int):
     config=general.LoadJson(f"{path}/PulseConfig.json")
     pulse=general.LoadBin(f"{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{Key}.dat")
     print(f"path:{path}/CH{Channel}_pulse/rawdata/CH{Channel}_{Key}.dat")
+    print(f"sample:{len(pulse)}")
     result=general.AnalyzePulse(pulse,config,Key,plot=True)
     print(result)
     

@@ -260,6 +260,7 @@ def GetSelectedIndex(x, y):
         inside[i] = inpolygon(sx, sy, picked[:, 0], picked[:, 1])
 
     selected_index = np.where(inside)[0]
+    print(f"Selected:{selected_index}")
     return selected_index
 
 def SelectIDFrom2DF(dfX,dfY,key:str):
@@ -402,8 +403,8 @@ def GenerateNoiseFromModel(amp_dens, sample: int, rate: float, eta: float = 1.0)
 
     return noise
 
-def GN(AMpModel):
+def GN(AMpModel): 
     random_phases = np.exp(1j * np.random.uniform(0, 2*np.pi, len(AMpModel)))
     spec = AMpModel * random_phases
-    noise= np.fft.irfft(spec)
+    noise = np.fft.irfft(spec)
     return noise
