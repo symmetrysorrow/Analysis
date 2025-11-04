@@ -227,27 +227,80 @@ def TempCalib(data):
 
     return data
 
-def GetSelectedIndex(x, y):
+import matplotlib.pyplot as plt
+import numpy as np
+import sys
+
+def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
+    """
+    2つのDataFrameの列から散布図を描画し、
+    ポリゴン選択で囲まれた点の key を返す。
+
+    Parameters
+    ----------
+    xDf, yDf : pd.DataFrame
+        x軸・y軸に対応するDataFrame
+    xkey, ykey : str
+        各DataFrameで使う列名
+    key_col : str
+        各行を識別するカラム名（デフォルト 'key'）
+    """
+
     def inpolygon(sx, sy, poly_x, poly_y):
         inside = False
         n = len(poly_x)
         j = n - 1
-        
         for i in range(n):
             xi, yi = poly_x[i], poly_y[i]
             xj, yj = poly_x[j], poly_y[j]
-            
             if ((yi > sy) != (yj > sy)) and \
                (sx < (xj - xi) * (sy - yi) / (yj - yi) + xi):
                 inside = not inside
             j = i
-        
         return inside
-    
-    plt.plot(x, y, "bo", markersize=1)
-    plt.grid()
-    picked = plt.ginput(n=-1, timeout=-1)
-    plt.close()
+
+    # --- x, y, key 抽出 ---
+    x = xDf[xkey].values
+    y = yDf[ykey].values
+    keys = xDf[key_col].values
+
+    if len(x) != len(y):
+        print("xとyの長さが一致していません")
+        sys.exit()
+
+    fig, ax = plt.subplots()
+    ax.plot(x, y, "bo", markersize=3)
+    ax.set_xlabel(xkey)
+    ax.set_ylabel(ykey)
+    ax.grid()
+
+    picked = []
+    done = [False]
+
+    def onclick(event):
+        toolbar = plt.get_current_fig_manager().toolbar
+        if toolbar.mode != '':
+            return  # ズーム・パン中は無視
+        if event.inaxes != ax:
+            return
+        picked.append((event.xdata, event.ydata))
+        ax.plot(event.xdata, event.ydata, "r+", markersize=8)
+        fig.canvas.draw()
+
+    def onkey(event):
+        if event.key == 'enter':
+            done[0] = True
+
+    fig.canvas.mpl_connect('button_press_event', onclick)
+    fig.canvas.mpl_connect('key_press_event', onkey)
+
+    print("クリックで点を選択（ズーム・パン中は無視）")
+    print("Enterキーで選択終了")
+
+    while not done[0]:
+        plt.pause(0.1)
+
+    plt.close(fig)
 
     if len(picked) < 3:
         print("3点以上選択してください")
@@ -255,21 +308,23 @@ def GetSelectedIndex(x, y):
 
     picked = np.array(picked)
     inside = np.zeros(len(x), dtype=bool)
-    
+
     for i, (sx, sy) in enumerate(zip(x, y)):
         inside[i] = inpolygon(sx, sy, picked[:, 0], picked[:, 1])
 
-    selected_index = np.where(inside)[0]
-    print(f"Selected:{selected_index}")
-    return selected_index
+    selected_mask = inside  # ブールマスクに変更
+    selected_keys = xDf.loc[selected_mask, "key"].values
+    print(f"Selected keys: {selected_keys}")
+    return selected_keys
+
 
 def SelectIDFrom2DF(dfX,dfY,key:str):
-    selected_index = GetSelectedIndex(dfX[key], dfY[key])
+    selected_index = GetSelectedKey(dfX, dfY, key, key)
     selected_ids = dfX.iloc[selected_index]["key"].values
     return selected_ids
 
 def SelectIDFrom1DF(df,keyX:str,keyY:str):
-    selected_index = GetSelectedIndex(df[keyX], df[keyY])
+    selected_index = GetSelectedKey(df, df, keyX, keyY)
     selected_ids = df.iloc[selected_index]["key"].values
     return selected_ids
 
