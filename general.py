@@ -227,25 +227,7 @@ def TempCalib(data):
 
     return data
 
-import matplotlib.pyplot as plt
-import numpy as np
-import sys
-
 def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
-    """
-    2つのDataFrameの列から散布図を描画し、
-    ポリゴン選択で囲まれた点の key を返す。
-
-    Parameters
-    ----------
-    xDf, yDf : pd.DataFrame
-        x軸・y軸に対応するDataFrame
-    xkey, ykey : str
-        各DataFrameで使う列名
-    key_col : str
-        各行を識別するカラム名（デフォルト 'key'）
-    """
-
     def inpolygon(sx, sy, poly_x, poly_y):
         inside = False
         n = len(poly_x)
@@ -275,33 +257,29 @@ def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
     ax.grid()
 
     picked = []
-    done = [False]
 
     def onclick(event):
         toolbar = plt.get_current_fig_manager().toolbar
-        if toolbar.mode != '':
-            return  # ズーム・パン中は無視
+        if toolbar.mode != '':  # ズーム・パン中は無視
+            return
         if event.inaxes != ax:
             return
         picked.append((event.xdata, event.ydata))
         ax.plot(event.xdata, event.ydata, "r+", markersize=8)
         fig.canvas.draw()
 
-    def onkey(event):
-        if event.key == 'enter':
-            done[0] = True
+    def onclose(event):
+        print("ウィンドウが閉じられました。選択を終了します。")
 
     fig.canvas.mpl_connect('button_press_event', onclick)
-    fig.canvas.mpl_connect('key_press_event', onkey)
+    fig.canvas.mpl_connect('close_event', onclose)
 
     print("クリックで点を選択（ズーム・パン中は無視）")
-    print("Enterキーで選択終了")
+    print("ウィンドウを閉じると選択終了")
 
-    while not done[0]:
-        plt.pause(0.1)
+    plt.show()  # GUIループ。閉じると自動的に続行される
 
-    plt.close(fig)
-
+    # --- 領域判定 ---
     if len(picked) < 3:
         print("3点以上選択してください")
         sys.exit()
@@ -312,8 +290,9 @@ def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
     for i, (sx, sy) in enumerate(zip(x, y)):
         inside[i] = inpolygon(sx, sy, picked[:, 0], picked[:, 1])
 
-    selected_mask = inside  # ブールマスクに変更
-    selected_keys = xDf.loc[selected_mask, "key"].values
+    selected_mask = inside
+    selected_keys = xDf.loc[selected_mask, key_col].values
+
     print(f"Selected keys: {selected_keys}")
     return selected_keys
 
