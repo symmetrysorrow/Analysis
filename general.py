@@ -92,12 +92,14 @@ def GetTime(rate:float,samples:int):
 
 def AnalyzePulse(pulse, Json: dict, key,plot=False):
     try:
-        pulse = pulse.astype(float)
-
-        pulse = Bessel(pulse, Json["Readout"]["Rate"], Json["Analysis"]["CutoffFrequency"])
+        pulse = pulse.astype(float)      
 
         base = np.mean(pulse[0:Json["Readout"]["PreSample"]])
         pulse -= base
+
+        rawpulse=pulse.copy()
+
+        pulse = Bessel(pulse, Json["Readout"]["Rate"], Json["Analysis"]["CutoffFrequency"])
 
         peak_index = np.argmax(pulse)
         peak_av = np.mean(
@@ -136,16 +138,11 @@ def AnalyzePulse(pulse, Json: dict, key,plot=False):
             "Rise": float(rise),
             "Decay": float(decay),
         }
-
-        # --- ここで有限値かチェック ---
-        if not all(np.isfinite(list(result.values()))):
-            return None
-        if rise<0 or decay<0:
-            return None
-        
+ 
         if plot:
             t = np.arange(len(pulse)) / Json["Readout"]["Rate"]
             plt.figure(figsize=(10, 5))
+            plt.plot(t, rawpulse, label="Raw Pulse", color="lightgray")
             plt.plot(t, pulse, label="Pulse", color="gray")
 
             # --- 範囲を安全に切り詰める ---
@@ -174,6 +171,11 @@ def AnalyzePulse(pulse, Json: dict, key,plot=False):
             plt.tight_layout()
             plt.show()
 
+        # --- ここで有限値かチェック ---
+        if not all(np.isfinite(list(result.values()))):
+            return None
+        if rise<0 or decay<0:
+            return None
 
         return result
 
@@ -241,15 +243,24 @@ def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
             j = i
         return inside
 
+    # --- 共通キーのみに絞る ---
+    common_keys = np.intersect1d(xDf[key_col].values, yDf[key_col].values)
+    xDf = xDf[xDf[key_col].isin(common_keys)].reset_index(drop=True)
+    yDf = yDf[yDf[key_col].isin(common_keys)].reset_index(drop=True)
+
+    if len(xDf) == 0:
+        print("共通するキーが存在しません。")
+        return np.array([])
+
     # --- x, y, key 抽出 ---
     x = xDf[xkey].values
     y = yDf[ykey].values
     keys = xDf[key_col].values
 
     if len(x) != len(y):
-        print("xとyの長さが一致していません")
-        sys.exit()
+        raise ValueError(f"x({len(x)}) と y({len(y)}) の長さが一致していません")
 
+    # --- プロットと選択 ---
     fig, ax = plt.subplots()
     ax.plot(x, y, "bo", markersize=3)
     ax.set_xlabel(xkey)
@@ -279,10 +290,10 @@ def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
 
     plt.show()  # GUIループ。閉じると自動的に続行される
 
-    # --- 領域判定 ---
+    # --- 選択領域判定 ---
     if len(picked) < 3:
         print("3点以上選択してください")
-        sys.exit()
+        return np.array([])
 
     picked = np.array(picked)
     inside = np.zeros(len(x), dtype=bool)
@@ -290,17 +301,17 @@ def GetSelectedKey(xDf, yDf, xkey, ykey, key_col="key"):
     for i, (sx, sy) in enumerate(zip(x, y)):
         inside[i] = inpolygon(sx, sy, picked[:, 0], picked[:, 1])
 
-    selected_mask = inside
-    selected_keys = xDf.loc[selected_mask, key_col].values
+    selected_keys = xDf.loc[inside, key_col].values
 
-    print(f"Selected keys: {selected_keys}")
+    #print(f"Selected keys ({len(selected_keys)}件): {selected_keys}")
     return selected_keys
 
 
 def SelectIDFrom2DF(dfX,dfY,key:str):
-    selected_index = GetSelectedKey(dfX, dfY, key, key)
-    selected_ids = dfX.iloc[selected_index]["key"].values
-    return selected_ids
+    selected_key = GetSelectedKey(dfX, dfY, key, key)
+    #selected_ids = dfX.iloc[selected_index]["key"].values
+    #return selected_ids
+    return selected_key
 
 def SelectIDFrom1DF(df,keyX:str,keyY:str):
     selected_index = GetSelectedKey(df, df, keyX, keyY)

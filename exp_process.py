@@ -72,6 +72,8 @@ def NoiseAnalysis(config:dict, path:str):
     cutoff = config["Analysis"]["CutoffFrequency"] # ローパスフィルタのカットオフ周波数
 
     eta=float(input("eta:"))
+
+    noise_threshold=0.04
     
     # フォルダごとの処理
     for folder in glob.glob(f"{path}/CH*_noise"):
@@ -85,10 +87,19 @@ def NoiseAnalysis(config:dict, path:str):
         # 奇数に設定し、ノイズの幅に応じて調整します。3, 5, 7 などが一般的です。
         # ここでは例としてカーネルサイズ3を使用します。
         median_kernel_size = 3
+
+        filtered=0
+        sample_unmatch=0
         
         for noise_path in tqdm.tqdm(noise_pathes):
             noise = general.LoadBin(noise_path)
             if len(noise) != sample:
+                sample_unmatch+=1
+                continue
+
+            diff=np.max(noise)-np.min(noise)
+            if diff>noise_threshold:
+                filtered+=1
                 continue
             
             # 1. スパイクノイズ除去（メディアンフィルタ）を追加
@@ -97,12 +108,20 @@ def NoiseAnalysis(config:dict, path:str):
             
             # 2. 既存の処理を続行
             noise = general.Bessel(noise, rate, cutoff)
+            diff=np.max(noise)-np.min(noise)
+            if diff>noise_threshold:
+                filtered+=1
+                continue
             original_noise_list.append(noise)
 
             noise_fft = np.fft.fft(noise)
             noise_amp = np.abs(noise_fft)
             amplitude_model += noise_amp
             count += 1
+
+        print(f"count;{count}")
+
+        print(f"Filtered {filtered} and skipped {sample_unmatch} from {len(noise_pathes)}.")
 
         amplitude_model/=count
 
@@ -125,6 +144,7 @@ def NoiseAnalysis(config:dict, path:str):
         plt.grid()
         plt.savefig(f"{folder}/modelnoise.png")
         plt.show()
+        
 
 
 def TempCalib(path:str,SelectedKeys,SavePath="output_tempcalib.csv",LoadPath="output_optimalfilter.csv"):
