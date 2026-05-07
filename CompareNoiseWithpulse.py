@@ -8,9 +8,9 @@ import os
 def CompareNoise():
     target_freq = 1000  # 正規化したい周波数[Hz]
 
-    sim_path = "h:/hata2025/1332_200_180"
-    sim_path="h:/hata2025/1332_215_195"
-    sim_noise_data_be = gn.LoadTxt(f"{sim_path}/noise_total-bessel100k.dat")
+    sim_path="h:/hata2025/1332_215_195-trial"
+    #sim_noise_data_be = gn.LoadTxt(f"{sim_path}/noise_total-bessel100k-with-pulsetail.dat")
+    sim_noise_data_be = gn.LoadTxt(f"{sim_path}/noise_total-bessel100k-with-pulseTail.dat")
     para = gn.LoadJson(f"{sim_path}/input.json")
     rate_sim = para["rate"]
     fq_sim_be = gn.GetFreq(rate_sim/2, len(sim_noise_data_be))
@@ -19,10 +19,10 @@ def CompareNoise():
     idx_100_sim = (np.abs(fq_sim_be - target_freq)).argmin()
     sim_noise_data_be /= sim_noise_data_be[idx_100_sim]
 
-    plt.plot(fq_sim_be, sim_noise_data_be, label="New Simulation")
+    plt.plot(fq_sim_be, sim_noise_data_be, label="Sim : Noise+Pulse")
 
     print("old simulation")
-    sim_path = "h:/hata2025/1332_215_195-old"
+    sim_path = "h:/hata2025/1332_215_195-trial"
     sim_noise_data_be = gn.LoadTxt(f"{sim_path}/noise_total-bessel100k.dat")
     para = gn.LoadJson(f"{sim_path}/input.json")
     rate_sim = para["rate"]
@@ -32,10 +32,9 @@ def CompareNoise():
     idx_100_sim = (np.abs(fq_sim_be - target_freq)).argmin()
     sim_noise_data_be /= sim_noise_data_be[idx_100_sim]
 
-    plt.plot(fq_sim_be, sim_noise_data_be, label="Old Simulation")
+    plt.plot(fq_sim_be, sim_noise_data_be, label="Sim : Noise Only")
 
     print("experimental data")
-    path = "G:/TSURUTA/20230616_post/room1-ch2-3_180mK_570uA_100kHz_g10"
     path="G:/tagawa/20241206/r1ch12_215mK_1400uA1400uA_difftrig5e-5_rate500k_samples100k_gain5_day2"
     ch = "CH0_noise"
     noise_data = gn.LoadTxt(f"{path}/{ch}/modelnoise.txt")
@@ -59,8 +58,7 @@ def CompareNoise():
     plt.legend()
     plt.loglog()
     plt.xlim(10,1e6)
-    plt.savefig("D:/desktop/CompareNoise.png",transparent=True)
+    plt.savefig("D:/desktop/CompareNoiseWithPulse.png",transparent=True)
     plt.show()
-    
 
 CompareNoise()
