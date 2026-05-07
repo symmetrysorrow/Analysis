@@ -9,6 +9,7 @@ import general
 import numpy as np
 import pandas as pd
 
+import analysis_dispatch
 import cli_prompts as prompts
 
 
@@ -43,6 +44,7 @@ def _select_two_channel_keys(path, chs):
     if len(chs) < 2:
         print("2チャンネル以上のデータが必要です。")
         return None, None, None
+
     if len(chs) == 2:
         channels = chs
     else:
@@ -148,7 +150,7 @@ def _run_hist(path):
     exp_process.Hist(csv_path, key)
 
 
-def main(path):
+def pulse_main(path):
     config = _ensure_config(path)
 
     choice = prompts.select_analysis_type()
@@ -170,10 +172,14 @@ def main(path):
         sys.exit(0)
 
 
+def _run_pulse_loop(path):
+    while True:
+        pulse_main(path)
+
+
 def run():
     path = general.InputPath()
-    while True:
-        main(path)
+    analysis_dispatch.dispatch(path, _run_pulse_loop)
 
 
 if __name__ == "__main__":
