@@ -12,6 +12,16 @@ from sklearn.linear_model import RANSACRegressor
 R_SH = 3.8e-3
 
 
+def _display_figure(fig):
+    fig.tight_layout()
+    fig.canvas.draw()
+    plt.show(block=True)
+
+
+def _clear_figure_state():
+    plt.close("all")
+
+
 def CorrectJump(V_out, I_bias, idx_start, idx_stop, num_points_for_slope=10):
     V_out_range = V_out[idx_start:idx_stop]
     diff = np.abs(np.diff(V_out_range))
@@ -39,6 +49,8 @@ class RangeSelector:
         self.I_bias = I_bias
         self.V_out = V_out
         self.selected_range = (None, None)
+        self.selector = None
+        self.fig = None
 
     def on_select(self, eclick, erelease):
         x1, x2 = sorted((eclick.xdata, erelease.xdata))
@@ -53,14 +65,14 @@ class RangeSelector:
 
     def select_range(self):
         print("Drag to select a range on the plot.")
-        fig, ax = plt.subplots()
+        self.fig, ax = plt.subplots()
         ax.plot(self.I_bias, self.V_out, marker="o", c="red", linewidth=1, markersize=6)
         ax.set_title("Select Range")
         ax.set_xlabel("I_bias[uA]")
         ax.set_ylabel("V_out[V]")
         ax.grid(True)
 
-        RectangleSelector(
+        self.selector = RectangleSelector(
             ax,
             self.on_select,
             interactive=True,
@@ -70,7 +82,8 @@ class RangeSelector:
             minspany=0,
             spancoords="data",
         )
-        plt.show()
+        plt.show(block=True)
+        plt.close(self.fig)
         return self.selected_range
 
 
@@ -135,10 +148,38 @@ def _print_temperature_summary(temps, temp_files):
         print(f"  {index}. {temp} ({len(files)} files)")
 
 
+def _has_saved_results(results_dir, temps):
+    for temp in temps:
+        result_path = _result_path(results_dir, temp)
+        if os.path.exists(result_path):
+            return True
+    return False
+
+
+def _plot_iv_curve(ax, I_bias, v_out, label, color, marker="o", linestyle="-", markersize=6, linewidth=1):
+    ax.plot(
+        I_bias,
+        v_out,
+        marker=marker,
+        linestyle=linestyle,
+        linewidth=linewidth,
+        markersize=markersize,
+        color=color,
+        label=label,
+    )
+
+
+def _style_iv_axes(ax, title):
+    ax.set_title(title)
+    ax.set_xlabel("I_bias[uA]")
+    ax.set_ylabel("V_out[V]")
+    ax.grid(True)
+    ax.legend()
+
+
 def _show_overview(temps, temp_files, results_dir):
     original_fig, original_ax = plt.subplots(figsize=(10, 6))
-    saved_fig, saved_ax = plt.subplots(figsize=(10, 6))
-    has_saved = False
+    saved_entries = []
     for index, (temp, files) in enumerate(zip(temps, temp_files), start=1):
         if not files:
             continue
@@ -154,44 +195,38 @@ def _show_overview(temps, temp_files, results_dir):
         I_bias = np.array(I_bias)
         original = offset(np.array(V_out))
         color = f"C{(index - 1) % 10}"
-        original_ax.plot(I_bias, original, marker="o", linewidth=1, markersize=4, color=color, label=temp)
+        _plot_iv_curve(original_ax, I_bias, original, temp, color, marker="o", linestyle="-", markersize=4, linewidth=1)
 
         saved = _load_result(results_dir, temp)
-        if saved is not None:
-            has_saved = True
-            saved_ax.plot(
-                saved["I_bias"],
-                saved["edited"],
-                linestyle="--",
-                linewidth=1.2,
-                color=color,
-                label=temp,
-            )
+        if saved is not None and len(saved["edited"]) == len(I_bias):
+            saved_entries.append((temp, color, saved["I_bias"], saved["edited"]))
 
-    original_ax.set_title("IV overview: original")
-    original_ax.set_xlabel("I_bias[uA]")
-    original_ax.set_ylabel("V_out[V]")
-    original_ax.grid(True)
-    original_ax.legend()
-    plt.show()
+    _style_iv_axes(original_ax, "IV overview: original")
+    _display_figure(original_fig)
+    plt.close(original_fig)
+    _clear_figure_state()
 
-    if has_saved:
-        saved_ax.set_title("IV overview: saved result")
-        saved_ax.set_xlabel("I_bias[uA]")
-        saved_ax.set_ylabel("V_out[V]")
-        saved_ax.grid(True)
-        saved_ax.legend()
-        plt.show()
-    else:
+    saved_fig = None
+    if saved_entries:
+        saved_fig, saved_ax = plt.subplots(figsize=(10, 6))
+        for temp, color, I_bias, edited in saved_entries:
+            _plot_iv_curve(saved_ax, I_bias, edited, temp, color, marker="o", linestyle="-", markersize=4, linewidth=1)
+        _style_iv_axes(saved_ax, "IV overview: saved result")
+        _display_figure(saved_fig)
         plt.close(saved_fig)
+        _clear_figure_state()
 
-    return original_fig, saved_fig if has_saved else None
+    return original_fig, saved_fig
 
 
-def _select_source_action():
+def _select_source_action(has_saved):
+    choices = ["Edit original"]
+    if has_saved:
+        choices.append("Edit saved result")
+    choices.append("Exit")
     return questionary.select(
         "IV analysis: choose the data source to edit or exit.",
-        choices=["Edit original", "Edit saved result", "Exit"],
+        choices=choices,
     ).ask()
 
 
@@ -219,13 +254,14 @@ def main(path=None):
     temps = natsorted(glob.glob("*mK"))
     temp_files = [natsorted(glob.glob(f"{temp}/*.dat")) for temp in temps]
     _print_temperature_summary(temps, temp_files)
+    has_saved = _has_saved_results(results_dir, temps)
 
     overview_fig = None
     saved_overview_fig = None
     if temps:
-            overview_fig, saved_overview_fig = _show_overview(temps, temp_files, results_dir)
+        overview_fig, saved_overview_fig = _show_overview(temps, temp_files, results_dir)
 
-    source_choice = _select_source_action()
+    source_choice = _select_source_action(has_saved)
     if source_choice == "Exit":
         return
     use_saved = source_choice == "Edit saved result"
@@ -260,49 +296,21 @@ def main(path=None):
 
         while True:
             original_fig, original_ax = plt.subplots(figsize=(10, 6))
-            original_ax.plot(
-                I_bias,
-                original_v_out,
-                marker="o",
-                c="blue",
-                linewidth=1,
-                markersize=6,
-                label="Original",
-            )
-            original_ax.plot(
-                I_bias,
-                working_v_out,
-                marker="o",
-                c="red",
-                linewidth=1,
-                markersize=6,
-                label="Working",
-            )
-            original_ax.set_title(f"{temp_index}/{len(temps)} {temp} original")
-            original_ax.set_xlabel("I_bias[uA]")
-            original_ax.set_ylabel("V_out[V]")
-            original_ax.grid(True)
-            original_ax.legend()
-            plt.show()
+            _plot_iv_curve(original_ax, I_bias, original_v_out, "Original", "blue")
+            _plot_iv_curve(original_ax, I_bias, working_v_out, "Working", "red")
+            _style_iv_axes(original_ax, f"{temp_index}/{len(temps)} {temp} original")
+            _display_figure(original_fig)
+            plt.close(original_fig)
+            _clear_figure_state()
 
             saved_fig = None
             if saved is not None and len(saved["edited"]) == len(I_bias):
                 saved_fig, saved_ax = plt.subplots(figsize=(10, 6))
-                saved_ax.plot(
-                    saved["I_bias"],
-                    saved["edited"],
-                    marker="o",
-                    c="green",
-                    linewidth=1,
-                    markersize=6,
-                    label="Saved result",
-                )
-                saved_ax.set_title(f"{temp_index}/{len(temps)} {temp} saved")
-                saved_ax.set_xlabel("I_bias[uA]")
-                saved_ax.set_ylabel("V_out[V]")
-                saved_ax.grid(True)
-                saved_ax.legend()
-                plt.show()
+                _plot_iv_curve(saved_ax, saved["I_bias"], saved["edited"], "Saved result", "green")
+                _style_iv_axes(saved_ax, f"{temp_index}/{len(temps)} {temp} saved")
+                _display_figure(saved_fig)
+                plt.close(saved_fig)
+                _clear_figure_state()
 
             choice = _select_temp_action(temp, temp_index, len(temps), is_last)
             if choice is None:
@@ -367,6 +375,7 @@ def main(path=None):
         overview_fig.savefig(overview_path, dpi=300, bbox_inches="tight")
         print(f"Saved {overview_path}")
         plt.close(overview_fig)
+        _clear_figure_state()
 
     if edited_records:
         summary_fig, summary_ax = plt.subplots()
@@ -379,8 +388,9 @@ def main(path=None):
         summary_ax.grid(True)
         summary_ax.legend()
         summary_fig.savefig(os.path.join(output_dir, "iv_calib_matome.png"), dpi=300, bbox_inches="tight")
-        plt.show()
+        _display_figure(summary_fig)
         plt.close(summary_fig)
+        _clear_figure_state()
 
         ir_fig, ir_ax = plt.subplots()
         for temp, I_bias, V_out in edited_records:
@@ -398,8 +408,9 @@ def main(path=None):
         ir_ax.grid(True)
         ir_ax.legend()
         ir_fig.savefig(os.path.join(output_dir, "iv_ir_calib_matome.png"), dpi=300, bbox_inches="tight")
-        plt.show()
+        _display_figure(ir_fig)
         plt.close(ir_fig)
+        _clear_figure_state()
 
 
 if __name__ == "__main__":

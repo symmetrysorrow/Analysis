@@ -2,7 +2,7 @@ import glob
 import os
 import re
 
-import cl_IR
+import iv
 import RT
 
 
@@ -69,7 +69,7 @@ def dispatch(path, pulse_runner):
         pulse_runner(path)
         return kind
     if kind == "iv":
-        cl_IR.main(path)
+        iv.main(path)
         return kind
     if kind == "rt":
         RT.main(path)
