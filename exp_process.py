@@ -10,6 +10,42 @@ import tqdm
 import scipy
 import re
 import natsort
+from contextlib import contextmanager
+
+
+@contextmanager
+def _cd(path):
+    prev = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
+def _load_dat(path):
+    try:
+        return np.loadtxt(path, comments="#", skiprows=6)
+    except Exception:
+        return np.loadtxt(path, comments="#")
+
+
+def _linear(x, a, b):
+    return a * x + b
+
+
+def _offset(data):
+    data = np.asarray(data) - data[0]
+    if np.mean(data[:10]) < 0:
+        data = data * -1
+    return data
+
+
+def _extract_int(pattern, text):
+    match = re.search(pattern, text)
+    if match is None:
+        raise ValueError(f"Could not parse value from {text}")
+    return int(match.group(1))
 
 def PulseAnalysis(config: dict, path: str):
     folders=glob.glob(f"{path}/CH*_pulse")
@@ -246,3 +282,73 @@ def Hist(csvpath:str,Key:str,binNum=None):
     fwhm,reso=general.MakeHistgram(data,bin_num=binNum)
     plt.show()
     print(f"FWHM:{fwhm}, Reso:{reso}%")
+
+
+def RunRT(path: str | None = None):
+    if path is None:
+        path = general.InputPath()
+    path = os.path.abspath(path)
+    if not os.path.isdir(path):
+        print(f"Path not found: {path}")
+        return
+
+    with _cd(path):
+        if not os.path.exists("output"):
+            os.mkdir("output")
+        if not os.path.exists("output"):
+            os.mkdir("output")
+        if not os.path.exists("rawdata"):
+            files = natsort.natsorted(glob.glob("*.dat"))
+            os.mkdir("rawdata")
+            for file_path in files:
+                shutil.move(file_path, "rawdata")
+        else:
+            files = natsort.natsorted(glob.glob("rawdata/*.dat"))
+
+        I_bias = []
+        V_out = []
+        T = []
+        for file_path in files:
+            data = _load_dat(file_path)
+            name = os.path.splitext(os.path.basename(file_path))[0]
+            V_out.append(np.mean(data))
+            T.append(_extract_int(r"_(\d+)mK", name))
+            I_bias.append(float(_extract_int(r"_(\d+)uA", name)))
+
+        low_temp = T.count(np.min(T))
+
+        popt, _cov = curve_fit(_linear, I_bias[:low_temp], V_out[:low_temp])
+        eta = 1 / popt[0]
+        print(f"eta (uA/V): {eta}")
+
+        T = natsort.natsorted(set(T[low_temp:]))
+        I_bias_2 = natsort.natsorted(set(I_bias[low_temp:]))
+
+        channel_match = re.search(r"CH(\d+)_", os.path.basename(files[0])) if files else None
+        channel = channel_match.group(1) if channel_match else "1"
+
+        V_out = []
+        for i in I_bias_2:
+            V = []
+            for t in T:
+                data = _load_dat(f"rawdata/CH{channel}_{t}mK_{int(i)}uA.dat")
+                V.append(np.mean(data))
+            V_out.append(V)
+
+        V_out = np.array(V_out)
+        cnt = 0
+        for values in V_out:
+            if cnt > 0:
+                V_out_base = values - V_out[0]
+                R = 3.9 * (I_bias_2[cnt] / (eta * V_out_base) - 1)
+                plt.title("R-T")
+                plt.plot(T, R, marker="o", linewidth=1, label=f"{I_bias_2[cnt]}uA", markersize=4)
+                plt.xlabel("Temperature[mK]", fontsize=16)
+                plt.ylabel("Resistance[m$\\Omega$]", fontsize=16)
+                plt.grid(True)
+                plt.legend(loc="best", fancybox=True, shadow=True)
+                np.savetxt(f"output/rt_{int(I_bias_2[cnt])}uA.txt", [T, R])
+            cnt += 1
+
+        plt.savefig("output/rt_RT.png")
+        plt.show()

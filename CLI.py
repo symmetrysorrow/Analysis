@@ -1,4 +1,4 @@
-from cli_app import run
+from pulse import run
 
 
 if __name__ == "__main__":

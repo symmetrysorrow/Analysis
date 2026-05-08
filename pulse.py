@@ -63,8 +63,11 @@ def _select_two_channel_keys(path, chs):
 
 
 def _save_selected_keys(path, selected_keys):
-    np.savetxt(os.path.join(path, "SelectedKeys.txt"), selected_keys, fmt="%d")
-    print(f"Saved selected keys to {path}/SelectedKeys.txt")
+    output_dir = os.path.join(path, "output")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "pulse_SelectedKeys.txt")
+    np.savetxt(output_path, selected_keys, fmt="%d")
+    print(f"Saved selected keys to {output_path}")
 
 
 def _run_temp_and_optimal(config, path):
@@ -100,14 +103,18 @@ def _run_select_from_scatter(path):
 
     if mode == "Single Channel":
         _channel, selected_keys = _select_single_channel_keys(path, chs)
-        np.savetxt(os.path.join(path, "SelectedKeys.txt"), selected_keys, fmt="%d")
+        output_dir = os.path.join(path, "output")
+        os.makedirs(output_dir, exist_ok=True)
+        np.savetxt(os.path.join(output_dir, "pulse_SelectedKeys.txt"), selected_keys, fmt="%d")
     elif mode == "Two Channels":
         channels, _key, selected_keys = _select_two_channel_keys(path, chs)
         if channels is None:
             return
-        np.savetxt(os.path.join(path, "SelectedKeys.txt"), selected_keys, fmt="%d")
+        output_dir = os.path.join(path, "output")
+        os.makedirs(output_dir, exist_ok=True)
+        np.savetxt(os.path.join(output_dir, "pulse_SelectedKeys.txt"), selected_keys, fmt="%d")
 
-    print(f"Saved selected keys to {path}/SelectedKeys.txt")
+    print(f"Saved selected keys to {os.path.join(path, 'output', 'pulse_SelectedKeys.txt')}")
 
 
 def _run_view_pulse(path):
